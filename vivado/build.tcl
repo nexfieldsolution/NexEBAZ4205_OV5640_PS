@@ -21,7 +21,7 @@ set_property file_type VHDL [get_files $ROOT_DIR/src/rgb2dvi/*.vhd]
 add_files -fileset constrs_1 $ROOT_DIR/constraints/ebaz4205_ov5640.xdc
 
 # Top module
-set_property top top_ov5640_ps [current_fileset]
+set_property top top_ov5640_hdmi [current_fileset]
 update_compile_order -fileset sources_1
 
 puts "INFO: project created → $PROJ_DIR"
