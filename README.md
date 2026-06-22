@@ -11,10 +11,13 @@ EBAZ4205 + hellofpga IO board + OV5640 camera → Zynq PS DDR3 frame buffer → 
 
 ## Status
 
-- [ ] Zynq PS Block Design 생성 (PS7 + DDR3 + AXI HP)
-- [ ] OV5640 capture → AXI HP write (DDR3 frame buffer)
-- [ ] DDR3 read → display timing → HDMI 1280x720
-- [ ] Bare metal PS 초기화 (FSBL + frame buffer 주소 설정)
+- [x] Zynq PS Block Design 생성 (PS7 + DDR3 + AXI HP0/HP1)
+- [x] top_ov5640_ps.v 골격 완성 (design_1_wrapper + OV5640 + clocking)
+- [x] 합성 통과 확인
+- [ ] **다음 작업: `axi_hp0_writer.v`** — ov5640_capture 픽셀(PCLK 54MHz)을 받아 AXI HP0 burst write → DDR3 frame buffer (0x1000_0000, 320×240×2B)
+- [ ] **다음 작업: `axi_hp1_reader.v`** — display 요청(frame_addr)에 맞춰 AXI HP1 burst read → frame_pixel 반환
+- [ ] top_ov5640_ps.v에 hp0_writer / hp1_reader 연결 (frame_buffer 대체)
+- [ ] Bare metal PS 초기화 (FSBL + standalone app)
 
 ## Architecture
 
