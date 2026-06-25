@@ -24,9 +24,6 @@ module top_ov5640_ps (
     inout           FIXED_IO_ps_clk,
     inout           FIXED_IO_ps_porb,
     inout           FIXED_IO_ps_srstb,
-    // PS7 clock output
-    output          FCLK_CLK0,
-
     // OV5640 DVP interface
     input           ov5640_pclk,
     input           ov5640_vsync,
@@ -43,6 +40,9 @@ module top_ov5640_ps (
     output [2:0]    HDMI_N,
     output [2:0]    HDMI_P
 );
+
+    // FCLK_CLK0: PS7 fabric 클럭 (내부 wire, 외부 핀 아님)
+    wire FCLK_CLK0;
 
     // ----------------------------------------------------------------
     // AXI HP0 wires (OV5640 capture → DDR3 write)
@@ -291,59 +291,126 @@ module top_ov5640_ps (
         .we    (wren)
     );
 
-    // // Frame buffer: 320x240 dual-port BRAM (BRAM inference)
-    // wire [18:0] rd_addr;
-    // wire [11:0] rd_data;
+    // ── pwrseq_done → FCLK_CLK0 도메인 동기화 (2FF) ──────────
+    reg aresetn_s1 = 0, aresetn_s2 = 0;
+    always @(posedge FCLK_CLK0) begin
+        aresetn_s1 <= pwrseq_done;
+        aresetn_s2 <= aresetn_s1;
+    end
+    wire axi_aresetn = aresetn_s2;
 
-    // frame_buffer u_frame_buffer (
-    //     .clka  (pclk_buf),
-    //     .wea   (wren),
-    //     .addra (wr_addr[16:0]),
-    //     .dina  (wr_data),
-    //     .clkb  (clk_25),
-    //     .addrb (rd_addr[16:0]),
-    //     .doutb (rd_data)
-    // );
+    // ── AXI HP0 read channel tie-off (HP0는 write 전용) ───────
+    assign hp0_arvalid = 1'b0;
+    assign hp0_araddr  = 32'd0;  assign hp0_arid    = 6'd0;
+    assign hp0_arlen   = 4'd0;   assign hp0_arsize  = 3'd0;
+    assign hp0_arburst = 2'd0;   assign hp0_arlock  = 2'd0;
+    assign hp0_arcache = 4'd0;   assign hp0_arprot  = 3'd0;
+    assign hp0_arqos   = 4'd0;   assign hp0_rready  = 1'b1;
 
-    // // Display: VGA 640x480 timing, 2x upscale from 320x240 frame buffer
-    // wire [3:0] disp_r, disp_g, disp_b;
-    // wire       disp_hs, disp_vs, disp_de;
+    // ── AXI HP0 writer: OV5640 캡처 → DDR3 ──────────────────
+    axi_hp0_writer #(
+        .DDR3_BASE (32'h1000_0000)
+    ) u_hp0_writer (
+        .pclk      (pclk_buf),
+        .pix_addr  (wr_addr[16:0]),
+        .pix_data  (wr_data),
+        .pix_we    (wren),
+        .aclk      (FCLK_CLK0),
+        .aresetn   (axi_aresetn),
+        // AW
+        .awaddr    (hp0_awaddr),  .awid    (hp0_awid),
+        .awlen     (hp0_awlen),   .awsize  (hp0_awsize),
+        .awburst   (hp0_awburst), .awlock  (hp0_awlock),
+        .awcache   (hp0_awcache), .awprot  (hp0_awprot),
+        .awqos     (hp0_awqos),   .awvalid (hp0_awvalid),
+        .awready   (hp0_awready),
+        // W
+        .wdata     (hp0_wdata),   .wid     (hp0_wid),
+        .wstrb     (hp0_wstrb),   .wlast   (hp0_wlast),
+        .wvalid    (hp0_wvalid),  .wready  (hp0_wready),
+        // B
+        .bid       (hp0_bid),     .bresp   (hp0_bresp),
+        .bvalid    (hp0_bvalid),  .bready  (hp0_bready)
+    );
 
-    // display u_display (
-    //     .clk25         (clk_25),
-    //     .vga_red       (disp_r),
-    //     .vga_green     (disp_g),
-    //     .vga_blue      (disp_b),
-    //     .vga_hsync     (disp_hs),
-    //     .vga_vsync     (disp_vs),
-    //     .vga_de        (disp_de),
-    //     .frame_addr    (rd_addr),
-    //     .frame_pixel   (rd_data),
-    //     .camera_active (camera_active)
-    // );
+    // ── AXI HP1 write channel tie-off (HP1는 read 전용) ───────
+    assign hp1_awvalid = 1'b0;
+    assign hp1_awaddr  = 32'd0;  assign hp1_awid    = 6'd0;
+    assign hp1_awlen   = 4'd0;   assign hp1_awsize  = 3'd0;
+    assign hp1_awburst = 2'd0;   assign hp1_awlock  = 2'd0;
+    assign hp1_awcache = 4'd0;   assign hp1_awprot  = 3'd0;
+    assign hp1_awqos   = 4'd0;
+    assign hp1_wvalid  = 1'b0;   assign hp1_wdata   = 64'd0;
+    assign hp1_wid     = 6'd0;   assign hp1_wstrb   = 8'd0;
+    assign hp1_wlast   = 1'b0;   assign hp1_bready  = 1'b1;
 
-    // // HDMI encode: rgb2dvi (25MHz pixel clock → TMDS)
-    // // vid_pData ordering from pattern_hdmi.v: {R[7:0], B[7:0], G[7:0]}
-    // // Our frame_pixel: [11:8]=R, [7:4]=G, [3:0]=B → expand 4→8 bits each
-    // wire [7:0] hdmi_r = {disp_r, disp_r};
-    // wire [7:0] hdmi_g = {disp_g, disp_g};
-    // wire [7:0] hdmi_b = {disp_b, disp_b};
+    // ── AXI HP1 reader: DDR3 → 디스플레이 라인 버퍼 ─────────────
+    wire [8:0]  disp_cam_col;
+    wire [7:0]  disp_cam_row;
+    wire [11:0] rd_data;
 
-    // rgb2dvi #(
-    //     .kClkPrimitive ("MMCM"),
-    //     .kClkRange     (5)       // 25MHz: kClkRange=5 (25~30MHz range)
-    // ) u_rgb2dvi (
-    //     .PixelClk    (clk_25),
-    //     .TMDS_Clk_n  (HDMI_CLK_N),
-    //     .TMDS_Clk_p  (HDMI_CLK_P),
-    //     .TMDS_Data_n (HDMI_N),
-    //     .TMDS_Data_p (HDMI_P),
-    //     .aRst        (1'b0),
-    //     .vid_pData   ({hdmi_r, hdmi_b, hdmi_g}),
-    //     .vid_pHSync  (disp_hs),
-    //     .vid_pVDE    (disp_de),
-    //     .vid_pVSync  (disp_vs)
-    // );
+    axi_hp1_reader #(
+        .DDR3_BASE (32'h1000_0000)
+    ) u_hp1_reader (
+        .disp_clk    (clk_25),
+        .src_row     (disp_cam_row),
+        .src_col     (disp_cam_col),
+        .frame_pixel (rd_data),
+        .aclk        (FCLK_CLK0),
+        .aresetn     (axi_aresetn),
+        // AR
+        .araddr      (hp1_araddr),  .arid    (hp1_arid),
+        .arlen       (hp1_arlen),   .arsize  (hp1_arsize),
+        .arburst     (hp1_arburst), .arlock  (hp1_arlock),
+        .arcache     (hp1_arcache), .arprot  (hp1_arprot),
+        .arqos       (hp1_arqos),   .arvalid (hp1_arvalid),
+        .arready     (hp1_arready),
+        // R
+        .rdata       (hp1_rdata),   .rid     (hp1_rid),
+        .rresp       (hp1_rresp),   .rlast   (hp1_rlast),
+        .rvalid      (hp1_rvalid),  .rready  (hp1_rready)
+    );
+
+    // ── Display: VGA 640x480 타이밍, 320x240 소스 2x 업스케일 ──
+    wire [3:0] disp_r, disp_g, disp_b;
+    wire       disp_hs, disp_vs, disp_de;
+
+    display u_display (
+        .clk25         (clk_25),
+        .vga_red       (disp_r),
+        .vga_green     (disp_g),
+        .vga_blue      (disp_b),
+        .vga_hsync     (disp_hs),
+        .vga_vsync     (disp_vs),
+        .vga_de        (disp_de),
+        .cam_col       (disp_cam_col),
+        .cam_row       (disp_cam_row),
+        .frame_pixel   (rd_data),
+        .camera_active (camera_active)
+    );
+
+    // ── HDMI: rgb2dvi (25MHz 픽셀 클럭 → TMDS) ──────────────────
+    // vid_pData 순서: {R[7:0], B[7:0], G[7:0]}
+    // frame_pixel: [11:8]=R, [7:4]=G, [3:0]=B → 4→8비트 확장
+    wire [7:0] hdmi_r = {disp_r, disp_r};
+    wire [7:0] hdmi_g = {disp_g, disp_g};
+    wire [7:0] hdmi_b = {disp_b, disp_b};
+
+    rgb2dvi #(
+        .kClkPrimitive ("MMCM"),
+        .kClkRange     (5)       // 25MHz: kClkRange=5 (25~30MHz range)
+    ) u_rgb2dvi (
+        .PixelClk    (clk_25),
+        .TMDS_Clk_n  (HDMI_CLK_N),
+        .TMDS_Clk_p  (HDMI_CLK_P),
+        .TMDS_Data_n (HDMI_N),
+        .TMDS_Data_p (HDMI_P),
+        .aRst        (1'b0),
+        .vid_pData   ({hdmi_r, hdmi_b, hdmi_g}),
+        .vid_pHSync  (disp_hs),
+        .vid_pVDE    (disp_de),
+        .vid_pVSync  (disp_vs)
+    );
  
 
 endmodule

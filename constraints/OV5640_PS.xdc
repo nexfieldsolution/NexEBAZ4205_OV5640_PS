@@ -54,5 +54,9 @@ set_property -dict {PACKAGE_PIN L17 IOSTANDARD LVCMOS33} [get_ports ov5640_pwdn]
 # create_clock이 없으면 pclk 도메인 FF이 unconstrained → 타이밍 미검사
 create_clock -period 18.519 -name pclk [get_ports ov5640_pclk]
 
+set_clock_groups -asynchronous \
+    -group [get_clocks clk_fpga_0] \
+    -group [get_clocks pclk]
+    
 # pclk ↔ clk25: 비동기 클럭 도메인, CDC 경로 timing 검사 제외
 set_clock_groups -asynchronous -group [get_clocks pclk] -group [get_clocks clk25_buf]

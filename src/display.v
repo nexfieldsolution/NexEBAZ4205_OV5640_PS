@@ -8,7 +8,8 @@ module display(
     output vga_hsync,
     output vga_vsync,
     output vga_de,              // data enable for rgb2dvi (high during active pixels)
-    output [18:0] frame_addr,
+    output [8:0]  cam_col,     // 소스 열 0..319 (1사이클 선행, axi_hp1_reader 연결)
+    output [7:0]  cam_row,     // 소스 행 0..239 (1사이클 선행, axi_hp1_reader 연결)
     input  [11:0] frame_pixel,
     input         camera_active
 );
@@ -37,12 +38,8 @@ module display(
                        ((vCounter == vMaxCount - 1) ? 10'd0 : vCounter + 1) : vCounter;
 
     // 2x2 upscale: VGA(0..639) → cam(0..319), VGA(0..479) → cam(0..239)
-    wire [8:0] cam_col = hNext[9:1];
-    wire [7:0] cam_row = vNext[8:1];
-    // cam_addr = cam_row * 320 + cam_col = cam_row*256 + cam_row*64 + cam_col
-    wire [16:0] cam_addr = ({1'b0, cam_row, 8'b0} + {3'b0, cam_row, 6'b0} + {8'b0, cam_col});
-
-    assign frame_addr = {2'b0, cam_addr};
+    assign cam_col = hNext[9:1];
+    assign cam_row = vNext[8:1];
 
     // ----------------------------------------------------------
     // 컬러바 테스트 패턴 (카메라 없을 때 표시)
