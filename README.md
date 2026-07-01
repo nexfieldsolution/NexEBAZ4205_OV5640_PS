@@ -9,15 +9,33 @@ EBAZ4205 + hellofpga IO board + OV5640 camera → Zynq PS DDR3 frame buffer → 
 
 베이스: [NexEBAZ4205_OV5640_PL](https://github.com/nexfieldsolution/NexEBAZ4205_OV5640_PL) — PL only 버전에서 PS 통합으로 확장
 
+## 작업 결과
+
+- 320×240 영상 출력 OK (DDR3 프레임버퍼 → HDMI)
+- AXI HP0 write / HP1 read 파이프라인 동작 확인 (xsdb mrd/mwr 검증)
+- 1픽셀 오프셋 버그 수정 (addr_latch 추가, 2026.07.01)
+
+| 기대 결과 | 현재 결과 |
+|-----------|-----------|
+| ![expect](NexEBAZ4205_OV5640_PS_expect.png) | ![result](NexEBAZ4205_OV5640_PS_result1.png) |
+
+## 문제점
+
+- **색상 문제 있음** — ps7_init 영향으로 특정 데이터 핀 고착 의심
+  - PL 버전은 정상, PS 버전만 색상 이상 → ps7_init이 범인으로 추정
+  - ILA로 ov5640_data[7:0] 확인 필요
+  - **일단 넘어가기로 함 → 향후 PetaLinux에서 계속 디버깅**
+
 ## Status
 
 - [x] Zynq PS Block Design 생성 (PS7 + DDR3 + AXI HP0/HP1)
-- [x] top_ov5640_ps.v 골격 완성 (design_1_wrapper + OV5640 + clocking)
-- [x] 합성 통과 확인
-- [ ] **다음 작업: `axi_hp0_writer.v`** — ov5640_capture 픽셀(PCLK 54MHz)을 받아 AXI HP0 burst write → DDR3 frame buffer (0x1000_0000, 320×240×2B)
-- [ ] **다음 작업: `axi_hp1_reader.v`** — display 요청(frame_addr)에 맞춰 AXI HP1 burst read → frame_pixel 반환
-- [ ] top_ov5640_ps.v에 hp0_writer / hp1_reader 연결 (frame_buffer 대체)
-- [ ] Bare metal PS 초기화 (FSBL + standalone app)
+- [x] top_ov5640_ps.v 완성
+- [x] axi_hp0_writer.v — OV5640 → DDR3 write
+- [x] axi_hp1_reader.v — DDR3 → display read
+- [x] 320×240 영상 출력 동작 확인
+- [ ] 색상 문제 해결 (PetaLinux에서 재디버깅 예정)
+- [ ] 1280×720 풀해상도 프레임버퍼로 확장
+- [ ] PetaLinux 부팅
 
 ## Architecture
 

@@ -22,7 +22,8 @@ module ov5640_capture(
   reg [1:0]  h_sub    =  2'd0;   // H 3:1 서브샘플 카운터 (0..2)
   reg [1:0]  v_sub    =  2'd0;   // V 3:1 서브샘플 카운터 (0..2)
   reg        byte_cnt =  1'b0;
-  reg [16:0] addr_reg = 17'd0;   // 최대 76799 (320x240-1)
+  reg [16:0] addr_reg   = 17'd0;   // 최대 76799 (320x240-1)
+  reg [16:0] addr_latch = 17'd0;   // addr_reg 증가 전 값 (1클럭 지연 보정)
   reg [11:0] dout_reg = 12'd0;
   reg        we_reg   = 1'b0;
 
@@ -33,7 +34,7 @@ module ov5640_capture(
 
 
 
-  assign addr = {2'b0, addr_reg};
+  assign addr = {2'b0, addr_latch};
   assign dout = dout_reg;
   assign we   = we_reg;
 
@@ -55,8 +56,9 @@ module ov5640_capture(
       h_sub    <=  2'd0;
       v_sub    <=  2'd0;
       byte_cnt <=  1'b0;
-      addr_reg <= 17'd0;
-      we_reg   <=  1'b0;
+      addr_reg   <= 17'd0;
+      addr_latch <= 17'd0;
+      we_reg     <=  1'b0;
     end
     else if (href)
     begin
@@ -70,8 +72,9 @@ module ov5640_capture(
         begin
           dout_reg <= {pix16[4:1], pix16[10:7], pix16[15:12]};  // R=[4:1], G=[10:7], B=[15:12]
           // dout_reg <= 12'hF00;
-          we_reg   <= 1'b1;
-          addr_reg <= addr_reg + 1'b1;
+          we_reg     <= 1'b1;
+          addr_latch <= addr_reg;          // 증가 전 주소 래치 (1클럭 지연 보정)
+          addr_reg   <= addr_reg + 1'b1;
         end
         else
         begin
